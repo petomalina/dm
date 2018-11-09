@@ -19,8 +19,6 @@ type DeploymentManagerSuite struct {
 
 func (s *DeploymentManagerSuite) SetupSuite() {
 	s.man = NewDefault()
-
-	s.man.Delete(ProjectID, "my-deployment")
 }
 
 func (s *DeploymentManagerSuite) TestComputeInstanceInsert() {
@@ -64,8 +62,8 @@ func (s *DeploymentManagerSuite) TestComputeInstanceInsert() {
 	})
 	s.NoError(err)
 
-	//err = s.man.Delete(ProjectID, "my-deployment")
-	//s.NoError(err)
+	err = s.man.Delete(ProjectID, "my-deployment")
+	s.NoError(err)
 }
 
 func TestDeploymentManagerSuite(t *testing.T) {
