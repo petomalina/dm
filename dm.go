@@ -4,13 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/go-yaml/yaml"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2/google"
 	gcpdm "google.golang.org/api/deploymentmanager/v2beta"
 	"net/http"
+	"os"
 	"time"
 )
+
+func init() {
+	log.SetFormatter(&log.JSONFormatter{})
+	log.SetOutput(os.Stdout)
+	log.SetLevel(log.WarnLevel)
+
+	log.Warn()
+}
 
 type Manager struct {
 	dms *gcpdm.Service
@@ -50,6 +59,12 @@ type Resource struct {
 }
 
 func (m *Manager) Insert(project, name string, resources []Resource) error {
+	log.WithFields(log.Fields{
+		"ProjectID": project,
+		"DeploymentName": name,
+		"Resources": resources,
+	}).Trace("Inserting new Deployment")
+
 	wrappedResources := Resources{
 		Resources: resources,
 	}
@@ -70,7 +85,7 @@ func (m *Manager) Insert(project, name string, resources []Resource) error {
 		return err
 	}
 
-	fmt.Println(string(res))
+	log.Debug("Generated configuration:", string(res))
 
 	call := m.dms.Deployments.Insert(project, &gcpdm.Deployment{
 		Name: name,
@@ -90,6 +105,12 @@ func (m *Manager) Insert(project, name string, resources []Resource) error {
 }
 
 func (m *Manager) Update(project, name string, resources []Resource) error {
+	log.WithFields(log.Fields{
+		"ProjectID": project,
+		"DeploymentName": name,
+		"Resources": resources,
+	}).Trace("Updating an existing Deployment")
+
 	res, err := remarshal(resources)
 	if err != nil {
 		return err
@@ -113,6 +134,11 @@ func (m *Manager) Update(project, name string, resources []Resource) error {
 }
 
 func (m *Manager) Delete(project, name string) error {
+	log.WithFields(log.Fields{
+		"ProjectID": project,
+		"DeploymentName": name,
+	}).Trace("Deleting a Deployment")
+
 	call := m.dms.Deployments.Delete(project, name)
 
 	op, err := call.Do()
@@ -130,7 +156,11 @@ func (m *Manager) waitUntilDone(project string, op *gcpdm.Operation) error {
 			return err
 		}
 
-		fmt.Printf("Pending [%s] with status [%s]\n", op.OperationType, opStatus.Status)
+		log.WithFields(log.Fields{
+			"ProjectID": project,
+			"OperationType": op.OperationType,
+			"Status": opStatus.Status,
+		}).Infof("Operation update")
 		if opStatus.Status == "DONE" {
 			if opStatus.Error != nil && len(opStatus.Error.Errors) > 0 {
 				return errors.New(opStatus.Error.Errors[0].Message)
@@ -138,12 +168,15 @@ func (m *Manager) waitUntilDone(project string, op *gcpdm.Operation) error {
 			break
 		}
 
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 6)
 	}
 
 	return nil
 }
 
+// remarshal takes a slice of resources, marshals them to JSON to omit empty
+// fields and remove any formatting that could affect the YAML configuration.
+// It remarshalls the JSON back into a struct and finally into the resulting YAML
 func remarshal(res []Resource) ([]byte, error) {
 	wrappedResources := Resources{
 		Resources: res,
